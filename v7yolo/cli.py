@@ -12,11 +12,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         help='The folder destination for the annotations and images')
     parser.add_argument('--download', action='store_true', required=False, default=False,
                         help='Flag indicating if to download the images from url')
-    parser.add_argument('--map', action='store', required=False, default=None,
-                        help='Path the map of labels to index. If not set the map will be generated.')
+    parser.add_argument('--split', action='store', required=False, default=0.3,
+                        help='Train validation test split (equals to the percentage reserved for validation)')
     return parser
 
 
 def v7yolo():
     args = _build_arg_parser().parse_args(sys.argv[1:])
-    v7_to_yolo(args.input, args.dest, args.download, args.map)
+    v7_to_yolo(args.input, args.dest, args.download, args.split)

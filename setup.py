@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='v7yolo',
-    version='20210221',
+    version='20210221.1',
     description='Utility package to train yolo models on v7 labelled data',
     url='https://github.com/quentingls/v7yolo',
     packages=find_packages(),

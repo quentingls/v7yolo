@@ -4,6 +4,9 @@ import requests
 import collections
 import glob
 import typing
+import yaml
+from shutil import copyfile
+
 
 _BoundingBox = collections.namedtuple('_BoundingBox', ('x', 'y', 'w', 'h'))
 
@@ -25,7 +28,7 @@ def _download_image(img_config: dict, target_dir: str) -> str:
     return path
 
 
-def _map_annotation(configs: typing.List[dict]) -> typing.Dict[str, int]:
+def _labels(configs: typing.List[dict]) -> typing.List[str]:
     """
     Maps annotation names to their alphabetical indices
     :param configs: Files configurations containing named annotations
@@ -40,7 +43,16 @@ def _map_annotation(configs: typing.List[dict]) -> typing.Dict[str, int]:
     # make mapping deterministic
     labels = list(set(labels))
     labels.sort()
-    return {labels[i]: i for i in range(len(labels))}
+    return labels
+
+
+def _training_config(target_dir: str, labels: typing.List[str]) -> typing.Dict:
+    return {
+        'train': os.path.join(target_dir, 'train'),
+        'val': os.path.join(target_dir, 'val'),
+        'nc': len(labels),
+        'names': labels
+    }
 
 
 def _build_bounding_box(width: int, height: int, polygon: dict) -> _BoundingBox:
@@ -108,13 +120,13 @@ def _v7_to_yolo_annotation(config: dict, target_dir: str, label_map: dict):
             f.write(f"{line}\n")
 
 
-def v7_to_yolo(input_dir: str, target_dir: str, download=True, label_map_path: str = None):
+def v7_to_yolo(input_dir: str, target_dir: str, download=True, split: float = 0.3):
     """
 
     :param input_dir: path to the directory containing the v7 annotation images
     :param target_dir: path to the directory to save the annotations and downloaded image
-    :param label_map_path: path to file mapping from v7 generated name to integer index
     :param download: If set to True it will try to download the file specified at the url key
+    :param split: Train / Test split ratio
     :return: None
     """
     v7_file_paths = glob.glob(os.path.join(input_dir, '*.json'))
@@ -125,24 +137,47 @@ def v7_to_yolo(input_dir: str, target_dir: str, download=True, label_map_path: s
         with open(path) as f:
             configs.append(json.load(f))
 
-    if download:
-        print('downloading images...')
-        for config in configs:
-            _download_image(config['image'], target_dir)
-
     # building label_map
-    if not label_map_path:
-        print('mapping annotation class to alphabetical index...')
-        label_map = _map_annotation(configs)
-        with open(os.path.join(target_dir, 'map.json'), 'w') as f:
-            json.dump(label_map, f)
-    else:
-        with open(label_map_path, 'r') as f:
-            label_map = json.loads(f)
+    print('building training configuration...')
+    labels = _labels(configs)
+    label_map = {labels[i]: i for i in range(len(labels))}
+    training_config = _training_config(target_dir, labels)
+    with open(os.path.join(target_dir, 'config.yaml'), 'w') as f:
+        yaml.dump(training_config, f)
 
-    # building yolo annotations
-    print('building yolo annotation from v7 configs')
-    for config in configs:
-        _v7_to_yolo_annotation(config, target_dir, label_map)
+    train_configs, valid_configs = configs[int(len(configs) * split):], configs[0: int(len(configs) * split)]
+    for config in train_configs:
+        os.makedirs(training_config['train'], exist_ok=True)
+        config['target_dir'] = training_config['train']
+    for config in valid_configs:
+        os.makedirs(training_config['val'], exist_ok=True)
+        config['target_dir'] = training_config['val']
+
+    for configs in (train_configs, valid_configs):
+        # building yolo annotations
+        print('building yolo annotation from v7 configs')
+        for config in configs:
+            _v7_to_yolo_annotation(config, config['target_dir'], label_map)
+
+        if download:
+            print('downloading images...')
+            print(f'images will be split between train / validation set ({1 - split} / {split})')
+            for config in configs:
+                _download_image(config['image'], config['target_dir'])
+        else:
+            print(f'splitting images between train / validation set ({1 - split} / {split})')
+            for config in configs:
+                path = os.path.join(input_dir, config['image']['filename'])
+                name = os.path.basename(path)
+                target_path = os.path.join(config['target_dir'], name)
+                copyfile(path, target_path)
 
     print('all done...')
+
+
+if __name__ == '__main__':
+    v7_to_yolo(
+        input_dir='/Users/quentin/projects/v7yolotest/inputs',
+        target_dir='/Users/quentin/projects/v7yolotest',
+        download=False
+    )
