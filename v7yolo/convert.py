@@ -47,9 +47,10 @@ def _labels(configs: typing.List[dict]) -> typing.List[str]:
 
 
 def _training_config(target_dir: str, labels: typing.List[str]) -> typing.Dict:
+    img_dir = os.path.join(target_dir, 'images')
     return {
-        'train': os.path.join(target_dir, 'train'),
-        'val': os.path.join(target_dir, 'val'),
+        'train': os.path.join(img_dir, 'train'),
+        'val': os.path.join(img_dir, 'val'),
         'nc': len(labels),
         'names': labels
     }
@@ -147,29 +148,33 @@ def v7_to_yolo(input_dir: str, target_dir: str, download=True, split: float = 0.
 
     train_configs, valid_configs = configs[int(len(configs) * split):], configs[0: int(len(configs) * split)]
     for config in train_configs:
-        os.makedirs(training_config['train'], exist_ok=True)
-        config['target_dir'] = training_config['train']
+        config['img_dir'] = training_config['train']
+        config['labels_dir'] = training_config['train'].replace('images', 'labels')
+        os.makedirs(config['img_dir'], exist_ok=True)
+        os.makedirs(config['labels_dir'], exist_ok=True)
     for config in valid_configs:
-        os.makedirs(training_config['val'], exist_ok=True)
-        config['target_dir'] = training_config['val']
+        config['img_dir'] = training_config['val']
+        config['labels_dir'] = training_config['val'].replace('images', 'labels')
+        os.makedirs(config['img_dir'], exist_ok=True)
+        os.makedirs(config['labels_dir'], exist_ok=True)
 
     for configs in (train_configs, valid_configs):
         # building yolo annotations
         print('building yolo annotation from v7 configs')
         for config in configs:
-            _v7_to_yolo_annotation(config, config['target_dir'], label_map)
+            _v7_to_yolo_annotation(config, config['labels_dir'], label_map)
 
         if download:
             print('downloading images...')
             print(f'images will be split between train / validation set ({1 - split} / {split})')
             for config in configs:
-                _download_image(config['image'], config['target_dir'])
+                _download_image(config['image'], config['img_dir'])
         else:
             print(f'splitting images between train / validation set ({1 - split} / {split})')
             for config in configs:
                 path = os.path.join(input_dir, config['image']['filename'])
                 name = os.path.basename(path)
-                target_path = os.path.join(config['target_dir'], name)
+                target_path = os.path.join(config['img_dir'], name)
                 copyfile(path, target_path)
 
     print('all done...')
